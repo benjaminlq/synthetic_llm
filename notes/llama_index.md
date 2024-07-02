@@ -197,7 +197,7 @@ Perform RAG on the ground truth node to generate reference answer
                     examples.append(example)
 ```
 
-### Limitations (To be fixed):
+### Limitations (Implement a custom module):
 - Single Node generation:
   + Implement Multi Node with random sampling
   + Implement Counter to track the number of times nodes are used to generate
