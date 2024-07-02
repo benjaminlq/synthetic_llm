@@ -1,10 +1,11 @@
 openai
 tiktoken
 ragas
-dotenv
+python-dotenv
 huggingface_hub
 qdrant_client
 fastembed
+pytest
 
 langchain
 langchain_experimental
@@ -18,3 +19,5 @@ llama-index-embeddings-fastembed==0.1.4
 llama-index-multi-modal-llms-openai
 llama-index-llms-anthropic
 llama-index-llms-openai
+
+pytest
