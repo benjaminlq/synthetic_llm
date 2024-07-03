@@ -199,12 +199,12 @@ Perform RAG on the ground truth node to generate reference answer
 
 ### Limitations (Implement a custom module):
 - Single Node generation:
-  + Implement Multi Node with random sampling
-  + Implement Counter to track the number of times nodes are used to generate
+  + Implement Multi Node with random sampling (Done)
+  + Implement Counter to track the number of times nodes are used to generate (Done)
 - Better Parsing of Questions
-  + Use Function Calling to return list of questions instead of free texts
+  + Use Function Calling to return list of questions instead of free texts (Done)
 - Lack of examples
-  + Implement a prompt placeholders for dynamically inserting examples
+  + Implement a prompt placeholders for dynamically inserting examples (Done)
   + Implement an example bank to store generated examples (SelfInstruct style)
 - Evolve to more complicated questions => EvolInstruct
 - Extra Steps to ensure context -> query relationships
