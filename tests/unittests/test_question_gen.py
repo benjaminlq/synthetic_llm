@@ -10,12 +10,20 @@ from llama_index.core.node_parser import SentenceSplitter
 
 from dotenv import load_dotenv
 from config import MAIN_DIR
+from prompts import (
+    QUESTION_GEN_PROMPT,
+    DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS,
+    ) 
 
 from custom_pydantic import QuestionList, GeneratedQuestion
+from generator import RagDataExampleWithMetadata
+from generator import CustomRAGDatasetGenerator
+from utils import convert_examples_to_string
+from datetime import datetime
 
 load_dotenv()
 test_llm = OpenAI(
-    model = "gpt-4o", max_tokens = 512, temperature=0.5
+    model = "gpt-3.5-turbo", max_tokens = 512, temperature=0.5
 )
 
 documents = SimpleDirectoryReader(
@@ -24,43 +32,6 @@ documents = SimpleDirectoryReader(
 
 sentence_splitter = SentenceSplitter(chunk_size=512, paragraph_separator="\n\n")
 nodes = sentence_splitter.get_nodes_from_documents(documents)
-
-DEFAULT_QUESTION_GENERATION_PROMPT_ZERO_SHOT = """\
-Given the context information and not prior knowledge.
-generate only questions based on the below query.
-{query_str}
------------
-Context:
-<START OF CONTEXT>
-{context_str}
-</END OF CONTEXT>
-
-Generated Questions:
------------
-"""
-
-DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS = """\
-Given the context information and not prior knowledge.
-generate only questions based on the below instructions.
-{query_str}
------------
-{few_shot_examples}
------------
-Context:
-<START OF CONTEXT>
-{context_str}
-</END OF CONTEXT>
-
-Generated Questions:
------------
-"""
-
-QUESTION_GEN_PROMPT = (
-    "You are a question generation engine. Your task is to setup {num_questions_per_chunk} "
-    "questions based on the facts given inside Context. The questions should be diverse in nature "
-    "across the document. Generated questions should be answerable only with reference to information given "
-    "within Context. Return empty list if questions cannot be generated to fulfill above requirements."
-    )
 
 def test_generate_questions():
     
@@ -74,7 +45,7 @@ def test_generate_questions():
     sample_index = SummaryIndex.from_documents([sample_document])
     sample_query_engine = sample_index.as_query_engine(
         llm=test_llm,
-        text_qa_template=PromptTemplate(DEFAULT_QUESTION_GENERATION_PROMPT_ZERO_SHOT),
+        text_qa_template=PromptTemplate(DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS).partial_format(few_shot_examples=""),
         output_cls=QuestionList
     )
     sample_response = sample_query_engine.query(question_gen_query).response
@@ -83,7 +54,7 @@ def test_generate_questions():
     blank_index = SummaryIndex.from_documents([blank_document])
     blank_query_engine = blank_index.as_query_engine(
         llm=test_llm,
-        text_qa_template=PromptTemplate(DEFAULT_QUESTION_GENERATION_PROMPT_ZERO_SHOT),
+        text_qa_template=PromptTemplate(DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS).partial_format(few_shot_examples=""),
         output_cls=QuestionList
     )
     blank_response = blank_query_engine.query(question_gen_query).response
@@ -95,3 +66,36 @@ def test_generate_questions():
     assert len(sample_response.question_list) == NO_OF_QUESTIONS
     for sample_question in sample_response.question_list:
         assert isinstance(sample_question, GeneratedQuestion)
+        
+def test_examples():
+    labelled_example_list = [
+        RagDataExampleWithMetadata(query="query_1", reference_contexts=["context_1-1", "context_1-2"], reference_answer="answer_1"),
+        RagDataExampleWithMetadata(query="query_3", reference_contexts=[], reference_answer="answer_3")
+    ]
+    
+    blank_example_list = []
+    
+    unlabelled_example_list = [
+        RagDataExampleWithMetadata(query="query_1", reference_contexts=["context_1-1", "context_1-2"]),
+        RagDataExampleWithMetadata(query="query_2", reference_contexts=["context_1-1"])
+    ]
+    
+    assert convert_examples_to_string(blank_example_list) == "", "Must be blank examples"
+    _ = convert_examples_to_string(unlabelled_example_list)
+    _ = convert_examples_to_string(labelled_example_list)
+
+def test_question_generator():
+    question_generator = CustomRAGDatasetGenerator(
+        nodes = nodes[:4],
+        llm = test_llm,
+        num_questions_per_chunk = 2,
+        maximum_source_nodes = 2,
+        n_shots = 2,
+    )
+    
+    _ = question_generator.generate_dataset_from_nodes(
+        use_examples = True,
+        reset_examples = True,
+        add_generated_data_as_examples = True,
+        iterations = 3
+    )

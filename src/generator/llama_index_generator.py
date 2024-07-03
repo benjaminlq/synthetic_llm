@@ -20,40 +20,24 @@ from llama_index.core.prompts.base import BasePromptTemplate, PromptTemplate
 from llama_index.core.prompts.default_prompts import DEFAULT_TEXT_QA_PROMPT
 
 from llama_index.core.schema import (
-    BaseNode,
-    MetadataMode,
-    NodeWithScore,
-    TransformComponent,
+    BaseNode, MetadataMode, NodeWithScore, TransformComponent,
 )
+from llama_index.core.llama_dataset.generator import RagDatasetGenerator
 from llama_index.core.settings import (
     Settings,
     llm_from_settings_or_context,
     transformations_from_settings_or_context,
 )
 from custom_pydantic import QuestionList
+from prompts import (
+    DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS,
+    QUESTION_GEN_PROMPT
+)
 
-DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS = """\
-Given the context information and not prior knowledge.
-generate only questions based on the below instructions.
-{query_str}
------------
-{few_shot_examples}
------------
-Context:
-<START OF CONTEXT>
-{context_str}
-</END OF CONTEXT>
+from copy import deepcopy
 
-Generated Questions:
------------
-"""
-
-QUESTION_GEN_PROMPT = (
-    "You are a question generation engine. Your task is to setup {num_questions_per_chunk} "
-    "questions based on the facts given inside Context. The questions should be diverse in nature "
-    "across the document. Generated questions should be answerable only with reference to information given "
-    "within Context. Return empty list if questions cannot be generated to fulfill above requirements."
-    )
+from generator import RagDataExampleWithMetadata
+from utils import convert_examples_to_string
 
 class CustomRAGDatasetGenerator(RagDatasetGenerator):
     def __init__(
@@ -76,7 +60,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         qa_llm: Optional[LLM] = None, 
         maximum_source_nodes: int = 1, 
         n_shots: int = 0, 
-        few_shot_examples: Optional[List[str]] = None,
+        few_shot_examples: Optional[RagDataExampleWithMetadata] = None,
     ):
         """Init params."""
         self._llm = llm or llm_from_settings_or_context(Settings, service_context)
@@ -96,7 +80,11 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
             or PromptTemplate(QUESTION_GEN_PROMPT).format(num_questions_per_chunk=num_questions_per_chunk)
         )
         self.nodes = nodes
-        self.few_shot_examples = few_shot_examples or []
+        self._examples_bank = deepcopy(few_shot_examples) or []
+        for example in self._examples_bank:
+            example.metadata["occurence"] = 0
+            example.metadata["example_type"] = "original"
+            
         self._n_shots = n_shots
         
         self._metadata_mode = metadata_mode
@@ -126,7 +114,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         qa_llm: Optional[LLM] = None,
         maximum_source_nodes: int = 1,
         n_shots: int = 0,
-        few_shot_examples: Optional[List[str]] = None,
+        few_shot_examples: Optional[List[RagDataExampleWithMetadata]] = None,
     ):
         """Generate dataset from documents."""
         llm = llm or llm_from_settings_or_context(Settings, service_context)
@@ -169,13 +157,19 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
             workers=workers,
         )
         
+    def reset_example_counter(self):
+        for example in self._examples_bank:
+            example.metadata["occurence"] = 0
+        
     async def _agenerate_dataset(
         self,
         nodes: List[BaseNode],
         labelled: bool = False,
         use_examples: bool = False,
-        use_generated_data_as_examples: bool = False,
-        iterations: int = 50
+        reset_examples: bool = True,
+        add_generated_data_as_examples: bool = False,
+        iterations: int = 50,
+        example_wrappers: str = "Context:\n<START OF CONTEXT>\n{context}\n</END OF CONTEXT>\n\nGenerated Questions:\n{answer}\n\n",
     ):
         
         def adjustment_factor(occurences: int, alpha: float=0.1):
@@ -193,7 +187,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         for _ in range(iterations):
             nodes_no = random.choice(range(1, self._maximum_source_nodes + 1))
             scores = [adjustment_factor(occurence) for occurence in occurence_list]
-            probs = np.ndarray(scores) / np.sum(scores)
+            probs = np.array(scores) / np.sum(scores)
             node_indices = np.random.choice(range(len(nodes)), size=nodes_no, replace=False, p=probs)
             
             for node_idx in node_indices:
@@ -201,8 +195,11 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                 
             node_indices_all_runs.append(node_indices)
         
+        if reset_examples:
+            self.reset_example_counter()
+        
         for node_indices in node_indices_all_runs:
-            nodes = [nodes[node_idx] for node_idx in node_indices]
+            retrieved_nodes = [nodes[node_idx] for node_idx in node_indices]
             index = SummaryIndex.from_documents(
                 [
                     Document(
@@ -211,20 +208,35 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                         excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
                         excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
                         relationships=node.relationships,
-                    ) for node in nodes
+                    ) for node in retrieved_nodes
                 ]
             )
             
             if use_examples:
-                # Use self._no_shots & self._examples
-                pass # To be implemented
+                example_list = []
+                examples_no = min(self._n_shots, len(self._examples_bank))
+                
+                # Example probs
+                if examples_no > 0:
+                    example_types = [1 if example.metadata["example_type"] == "original" else 0.5 for example in self._examples_bank]
+                    print(example_types)
+                    example_probs = np.array(example_types) / np.sum(example_types)
+                    print(example_probs)
+                    example_indices = np.random.choice(list(range(len(self._examples_bank))), size=examples_no, replace=False, p=example_probs)
+                    
+                    example_indices = random.sample(list(range(len(self._examples_bank))), examples_no)
+                    for example_idx in example_indices:
+                        example_list.append(self._examples_bank[example_idx])
+                        self._examples_bank[example_idx].metadata["occurence"] += 1
+                    
+                few_shot_example_str = convert_examples_to_string(
+                    example_list, example_wrappers)
             
             query_engine = index.as_query_engine(
                 llm = self._gen_llm,
-                text_qa_template=self.text_question_template,
-                ouput_cls=QuestionList
-                use_async=True,
-                
+                text_qa_template=self.text_question_template.partial_format(few_shot_examples=few_shot_example_str),
+                output_cls=QuestionList,
+                use_async=True
             )
             task = query_engine.aquery(
                 self.question_gen_query
@@ -244,6 +256,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                 )
 
             if num_questions_generated > 0:
+                
                 reference_contexts = [nodes[node_idx].text for node_idx in node_indices_all_runs[run_idx]]
                 model_name = self._gen_llm.metadata.model_name
                 created_by = CreatedBy(type=CreatedByType.AI, model_name=model_name)
@@ -262,7 +275,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                         qr_tasks, self._show_progress, self._workers
                     )
                     for question, answer_response in zip(cleaned_questions, answer_responses):
-                        example = LabelledRagDataExample(
+                        example = RagDataExampleWithMetadata(
                             query=question,
                             reference_answer=str(answer_response),
                             reference_contexts=reference_contexts,
@@ -273,7 +286,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                         
                 else:
                     for question in cleaned_questions:
-                        example = LabelledRagDataExample(
+                        example = RagDataExampleWithMetadata(
                             query=question,
                             reference_answer="",
                             reference_contexts=reference_contexts,
@@ -281,5 +294,27 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                             query_by=created_by,
                         )
                         examples.append(example)
+
+                if add_generated_data_as_examples:
+                    added_example = deepcopy(example)
+                    added_example.metadata["occurence"] = 0
+                    added_example.metadata["example_type"] = "generated"
+                    self._examples_bank.append(added_example)
         
         return LabelledRagDataset(examples=examples)
+    
+    async def agenerate_questions_from_nodes(self, **kwargs) -> LabelledRagDataset:
+        """Generates questions but not the reference answers."""
+        return await self._agenerate_dataset(self.nodes, labelled=False, **kwargs)
+
+    async def agenerate_dataset_from_nodes(self,  **kwargs) -> LabelledRagDataset:
+        """Generates questions for each document."""
+        return await self._agenerate_dataset(self.nodes, labelled=True, **kwargs)
+
+    def generate_questions_from_nodes(self, **kwargs) -> LabelledRagDataset:
+        """Generates questions but not the reference answers."""
+        return asyncio_run(self.agenerate_questions_from_nodes(**kwargs))
+
+    def generate_dataset_from_nodes(self, **kwargs) -> LabelledRagDataset:
+        """Generates questions for each document."""
+        return asyncio_run(self.agenerate_dataset_from_nodes(**kwargs))
