@@ -12,5 +12,5 @@ class QuestionList(BaseModel):
     """List of Generated Queries on a certain topic"""
     question_list: Optional[List[GeneratedQuestion]] = Field(
         default_factory=list,
-        description="List of generated questions on a certain topic"
+        description="List of generated questions on a certain topic",
     )
