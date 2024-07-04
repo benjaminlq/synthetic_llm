@@ -1,13 +1,13 @@
-DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS = """\
+DEFAULT_QUESTION_GENERATION_PROMPT_SYSTEM_PROMPT = """\
 Given the context information and not prior knowledge.
 generate only questions based on the below instructions.
+
 {query_str}
 -----------
+"""
+
+DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS = DEFAULT_QUESTION_GENERATION_PROMPT_SYSTEM_PROMPT + """\
 {few_shot_examples}
-
-EXAMPLES:
-Context:
-
 -----------
 Context:
 <START OF CONTEXT>
@@ -15,7 +15,6 @@ Context:
 </END OF CONTEXT>
 
 Generated Questions:
------------
 """
 
 QUESTION_GEN_PROMPT = (
