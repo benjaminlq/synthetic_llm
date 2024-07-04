@@ -1,15 +1,7 @@
-import os
-import random
-
 from llama_index.core.prompts import PromptTemplate
 from llama_index.core.indices import SummaryIndex
-from llama_index.llms.openai import OpenAI
 from llama_index.core.schema import Document
-from llama_index.core import SimpleDirectoryReader
-from llama_index.core.node_parser import SentenceSplitter
 
-from dotenv import load_dotenv
-from config import MAIN_DIR
 from prompts import (
     QUESTION_GEN_PROMPT,
     DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS,
@@ -19,45 +11,33 @@ from custom_pydantic import QuestionList, GeneratedQuestion
 from generator import RagDataExampleWithMetadata
 from generator import CustomRAGDatasetGenerator
 from utils import convert_examples_to_string
-from datetime import datetime
 
-load_dotenv()
-test_llm = OpenAI(
-    model = "gpt-3.5-turbo", max_tokens = 512, temperature=0.5
-)
+BLANK_TEXT = ""
+NO_OF_QUESTIONS = 4
+QUESTION_GEN_QUERY = PromptTemplate(QUESTION_GEN_PROMPT).format(num_questions_per_chunk=NO_OF_QUESTIONS)
 
-documents = SimpleDirectoryReader(
-    input_dir = os.path.join(MAIN_DIR, "tests", "sample_docs")
-).load_data()
-
-sentence_splitter = SentenceSplitter(chunk_size=512, paragraph_separator="\n\n")
-nodes = sentence_splitter.get_nodes_from_documents(documents)
-
-def test_generate_questions():
+def test_generate_questions(server):
     
-    blank_text = ""
-    sample_node = random.choice(nodes)
-    NO_OF_QUESTIONS = 4
+    test_llm, sample_node, _ = server
     
-    question_gen_query = PromptTemplate(QUESTION_GEN_PROMPT).format(num_questions_per_chunk=NO_OF_QUESTIONS)
-
     sample_document = Document(text=sample_node.text)
     sample_index = SummaryIndex.from_documents([sample_document])
     sample_query_engine = sample_index.as_query_engine(
         llm=test_llm,
-        text_qa_template=PromptTemplate(DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS).partial_format(few_shot_examples=""),
+        text_qa_template=PromptTemplate(DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS).partial_format(few_shot_examples=BLANK_TEXT),
         output_cls=QuestionList
     )
-    sample_response = sample_query_engine.query(question_gen_query).response
     
-    blank_document = Document(text=blank_text)
+    sample_response = sample_query_engine.query(QUESTION_GEN_QUERY).response
+    
+    blank_document = Document(text=BLANK_TEXT)
     blank_index = SummaryIndex.from_documents([blank_document])
     blank_query_engine = blank_index.as_query_engine(
         llm=test_llm,
-        text_qa_template=PromptTemplate(DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS).partial_format(few_shot_examples=""),
+        text_qa_template=PromptTemplate(DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS).partial_format(few_shot_examples=BLANK_TEXT),
         output_cls=QuestionList
     )
-    blank_response = blank_query_engine.query(question_gen_query).response
+    blank_response = blank_query_engine.query(QUESTION_GEN_QUERY).response
          
     assert isinstance(sample_response, QuestionList), "Invalid Output Class for sample response"
     assert isinstance(blank_response, QuestionList), "Invalid Output Class for blank response"
@@ -84,7 +64,10 @@ def test_examples():
     _ = convert_examples_to_string(unlabelled_example_list)
     _ = convert_examples_to_string(labelled_example_list)
 
-def test_question_generator():
+def test_question_generator(server):
+    
+    test_llm, _, nodes = server
+    
     question_generator = CustomRAGDatasetGenerator(
         nodes = nodes[:4],
         llm = test_llm,
@@ -99,3 +82,6 @@ def test_question_generator():
         add_generated_data_as_examples = True,
         iterations = 3
     )
+
+def test_question_generator_function_calling(server):
+    test_llm, _, nodes = server
