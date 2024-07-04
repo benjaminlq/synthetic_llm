@@ -205,6 +205,9 @@ Perform RAG on the ground truth node to generate reference answer
   + Use Function Calling to return list of questions instead of free texts (Done)
 - Lack of examples
   + Implement a prompt placeholders for dynamically inserting examples (Done)
-  + Implement an example bank to store generated examples (SelfInstruct style)
+  + Implement an example bank to store generated examples (Done)
+
+- Add Few Shot Function Calling (In Progress)
+- Add Function Calling for Few shots
 - Evolve to more complicated questions => EvolInstruct
 - Extra Steps to ensure context -> query relationships
