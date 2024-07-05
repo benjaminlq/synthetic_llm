@@ -1,4 +1,3 @@
-import re
 import warnings
 import random
 import numpy as np
@@ -16,7 +15,7 @@ from llama_index.core.llama_dataset import (
 )
 from llama_index.core.llms.llm import LLM
 from llama_index.core.postprocessor.node import KeywordNodePostprocessor
-from llama_index.core.prompts.base import BasePromptTemplate, PromptTemplate
+from llama_index.core.prompts import BasePromptTemplate, PromptTemplate, ChatPromptTemplate, ChatMessage, MessageRole
 from llama_index.core.prompts.default_prompts import DEFAULT_TEXT_QA_PROMPT
 
 from llama_index.core.schema import (
@@ -30,6 +29,7 @@ from llama_index.core.settings import (
 )
 from custom_pydantic import QuestionList
 from prompts import (
+    DEFAULT_QUESTION_GENERATION_PROMPT_SYSTEM_PROMPT,
     DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS,
     QUESTION_GEN_PROMPT
 )
@@ -37,7 +37,7 @@ from prompts import (
 from copy import deepcopy
 
 from generator import RagDataExampleWithMetadata
-from utils import convert_examples_to_string
+from utils import convert_examples_to_string, convert_examples_to_chat_messages
 
 class CustomRAGDatasetGenerator(RagDatasetGenerator):
     def __init__(
@@ -56,6 +56,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         service_context: Optional[ServiceContext] = None,
         
         # Added
+        use_function_calling: bool = True,
         generation_llm: Optional[LLM] = None, 
         qa_llm: Optional[LLM] = None, 
         maximum_source_nodes: int = 1, 
@@ -69,10 +70,18 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         
         self.num_questions_per_chunk = num_questions_per_chunk
         self._maximum_source_nodes = maximum_source_nodes
+        self._use_function_calling = use_function_calling
         
-        self.text_question_template = text_question_template or PromptTemplate(
-            DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS
-        )
+        if use_function_calling:
+            self.text_question_template = text_question_template or ChatPromptTemplate(
+                [ChatMessage(content=DEFAULT_QUESTION_GENERATION_PROMPT_SYSTEM_PROMPT, role=MessageRole.SYSTEM)]
+            )
+            assert isinstance(self.text_question_template, ChatPromptTemplate), "Must use Chat Sequence for few shot tool calling"
+
+        else:
+            self.text_question_template = text_question_template or PromptTemplate(
+                DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS
+            )
         
         self.text_qa_template = text_qa_template or DEFAULT_TEXT_QA_PROMPT
         self.question_gen_query = (
@@ -110,6 +119,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         service_context: Optional[ServiceContext] = None,
         
         # added
+        use_function_calling: bool = True,
         generation_llm: Optional[LLM] = None,
         qa_llm: Optional[LLM] = None,
         maximum_source_nodes: int = 1,
@@ -149,6 +159,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
             num_questions_per_chunk=num_questions_per_chunk,
             maximum_source_nodes=maximum_source_nodes,
             n_shots=n_shots,
+            use_function_calling=use_function_calling,
             few_shot_examples=few_shot_examples,
             text_question_template=text_question_template,
             text_qa_template=text_qa_template,
@@ -169,7 +180,8 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         reset_examples: bool = True,
         add_generated_data_as_examples: bool = False,
         iterations: int = 50,
-        example_wrappers: str = "Context:\n<START OF CONTEXT>\n{context}\n</END OF CONTEXT>\n\nGenerated Questions:\n{answer}\n\n",
+        example_wrappers: str = "Context:\n<START OF CONTEXT>\n{context_str}\n</END OF CONTEXT>\n\nGenerated Questions:\n{answer}\n\n",
+        chat_user_template: str = "Context:\n<START OF CONTEXT>\n{context_str}\n</END OF CONTEXT>"
     ):
         
         def adjustment_factor(occurences: int, alpha: float=0.1):
@@ -219,22 +231,31 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                 # Example probs
                 if examples_no > 0:
                     example_types = [1 if example.metadata["example_type"] == "original" else 0.5 for example in self._examples_bank]
-                    print(example_types)
                     example_probs = np.array(example_types) / np.sum(example_types)
-                    print(example_probs)
                     example_indices = np.random.choice(list(range(len(self._examples_bank))), size=examples_no, replace=False, p=example_probs)
                     
                     example_indices = random.sample(list(range(len(self._examples_bank))), examples_no)
                     for example_idx in example_indices:
                         example_list.append(self._examples_bank[example_idx])
                         self._examples_bank[example_idx].metadata["occurence"] += 1
+                
+                if self._use_function_calling:
+                    few_shot_example_messages = convert_examples_to_chat_messages(example_list, user_template=chat_user_template, context_key="context_str")
+                    updated_chat_messages = deepcopy(self.text_question_template.message_templates)
+                    updated_chat_messages.extend(few_shot_example_messages)
+                    updated_chat_messages.append(
+                        ChatMessage(content=chat_user_template, role=MessageRole.USER)
+                    )
+                    updated_text_question_template = ChatPromptTemplate(updated_chat_messages)
                     
-                few_shot_example_str = convert_examples_to_string(
-                    example_list, example_wrappers)
+                else:
+                    few_shot_example_str = convert_examples_to_string(example_list, example_wrappers, context_key="context_str")
+                    updated_text_question_template = deepcopy(self.text_question_template)
+                    updated_text_question_template = updated_text_question_template.partial_format(few_shot_examples=few_shot_example_str)
             
             query_engine = index.as_query_engine(
                 llm = self._gen_llm,
-                text_qa_template=self.text_question_template.partial_format(few_shot_examples=few_shot_example_str),
+                text_qa_template=updated_text_question_template,
                 output_cls=QuestionList,
                 use_async=True
             )

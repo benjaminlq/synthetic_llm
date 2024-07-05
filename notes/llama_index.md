@@ -1,6 +1,16 @@
-# LlamaIndex Synthetic Data Generation
+LlamaIndex Synthetic Data Generation
+===============
 
-## RAG Dataset Class
+Table of Content 
+- [LlamaIndex Synthetic Data Generation](#llamaindex-synthetic-data-generation)
+- [RAG Dataset Class](#rag-dataset-class)
+- [RAG Dataset Generator](#rag-dataset-generator)
+  - [Important Prompts:](#important-prompts)
+  - [RAGDatasetGenerator Class](#ragdatasetgenerator-class)
+  - [Limitations (Implement a custom module):](#limitations-implement-a-custom-module)
+
+
+# RAG Dataset Class
 
 * RagExamplePrediction
 ```
@@ -41,9 +51,9 @@ class LabelledRagDataset(BaseLlamaDataset[BaseQueryEngine]):
     ) -> RagExamplePrediction:
 ```
 
-## RAG Dataset Generator
+# RAG Dataset Generator
 
-### Important Prompts:
+## Important Prompts:
 * Question generation (For generating questions)
 ```
 DEFAULT_QUESTION_GENERATION_PROMPT = """\
@@ -82,7 +92,7 @@ DEFAULT_QUESTION_GEN_QUERY = (
 )
 ```
 
-### RAGDatasetGenerator Class
+## RAGDatasetGenerator Class
 * Key attributes:
 ```
     nodes: List[BaseNode] => List of Nodes to be generated from
@@ -197,7 +207,7 @@ Perform RAG on the ground truth node to generate reference answer
                     examples.append(example)
 ```
 
-### Limitations (Implement a custom module):
+## Limitations (Implement a custom module):
 - Single Node generation:
   + Implement Multi Node with random sampling (Done)
   + Implement Counter to track the number of times nodes are used to generate (Done)
@@ -206,8 +216,6 @@ Perform RAG on the ground truth node to generate reference answer
 - Lack of examples
   + Implement a prompt placeholders for dynamically inserting examples (Done)
   + Implement an example bank to store generated examples (Done)
-
-- Add Few Shot Function Calling (In Progress)
+- Add Few Shot Function Calling (Done)
 - Add Function Calling for Few shots
 - Evolve to more complicated questions => EvolInstruct
-- Extra Steps to ensure context -> query relationships

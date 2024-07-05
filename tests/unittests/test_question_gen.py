@@ -74,6 +74,7 @@ def test_question_generator(server):
         num_questions_per_chunk = 2,
         maximum_source_nodes = 2,
         n_shots = 2,
+        use_function_calling=False
     )
     
     _ = question_generator.generate_dataset_from_nodes(
@@ -85,3 +86,19 @@ def test_question_generator(server):
 
 def test_question_generator_function_calling(server):
     test_llm, _, nodes = server
+    
+    pydantic_question_generator = CustomRAGDatasetGenerator(
+        nodes = nodes[:4],
+        llm = test_llm,
+        num_questions_per_chunk = 2,
+        maximum_source_nodes = 2,
+        n_shots = 2,
+        use_function_calling=True
+    )
+
+    _ = pydantic_question_generator.generate_dataset_from_nodes(
+        use_examples = True,
+        reset_examples = True,
+        add_generated_data_as_examples = True,
+        iterations = 3,
+    )
