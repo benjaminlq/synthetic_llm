@@ -17,7 +17,6 @@ from llama_index.core.llms.llm import LLM
 from llama_index.core.postprocessor.node import KeywordNodePostprocessor
 from llama_index.core.prompts import BasePromptTemplate, PromptTemplate, ChatPromptTemplate, ChatMessage, MessageRole
 from llama_index.core.prompts.default_prompts import DEFAULT_TEXT_QA_PROMPT
-
 from llama_index.core.schema import (
     BaseNode, MetadataMode, NodeWithScore, TransformComponent,
 )
@@ -27,17 +26,38 @@ from llama_index.core.settings import (
     llm_from_settings_or_context,
     transformations_from_settings_or_context,
 )
-from custom_pydantic import QuestionList
-from prompts import (
-    DEFAULT_QUESTION_GENERATION_PROMPT_SYSTEM_PROMPT,
-    DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS,
-    QUESTION_GEN_PROMPT
-)
+from llama_index.core.llama_dataset import LabelledRagDataExample
 
+from ._modules import QuestionList, RagDataExampleWithMetadata
 from copy import deepcopy
 
-from generator import RagDataExampleWithMetadata
 from utils import convert_examples_to_string, convert_examples_to_chat_messages
+
+DEFAULT_QUESTION_GENERATION_PROMPT_SYSTEM_PROMPT = """\
+Given the context information and not prior knowledge.
+generate only questions based on the below instructions.
+
+{query_str}
+-----------
+"""
+
+DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS = DEFAULT_QUESTION_GENERATION_PROMPT_SYSTEM_PROMPT + """\
+{few_shot_examples}
+-----------
+Context:
+<START OF CONTEXT>
+{context_str}
+</END OF CONTEXT>
+
+Generated Questions:
+"""
+
+QUESTION_GEN_PROMPT = (
+    "You are a question generation engine. Your task is to setup up to {num_questions_per_chunk} "
+    "questions based on the facts given inside Context. The questions should be diverse in nature "
+    "across the document. Generated questions should be answerable only with reference to information given "
+    "within Context. Return empty list if questions cannot be generated to fulfill above requirements."
+    )
 
 class CustomRAGDatasetGenerator(RagDatasetGenerator):
     def __init__(

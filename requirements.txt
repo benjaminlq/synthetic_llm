@@ -14,12 +14,10 @@ langchain-anthropic
 langchain_huggingface
 langchain-openai
 
-llama_index==0.10.36
-llama-index-vector-stores-qdrant==0.2.10
-llama-index-embeddings-fastembed==0.1.4
+llama_index
+llama-index-vector-stores-qdrant
+llama-index-embeddings-fastembed
 llama-index-multi-modal-llms-openai
 llama-index-llms-anthropic
 llama-index-llms-openai
 llama-index-callbacks-deepeval
-
-pytest

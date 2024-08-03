@@ -2,13 +2,13 @@ from llama_index.core.prompts import PromptTemplate
 from llama_index.core.indices import SummaryIndex
 from llama_index.core.schema import Document
 
-from prompts import (
+from generator.llama_index_generator import (
     QUESTION_GEN_PROMPT,
     DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS,
     ) 
 
-from custom_pydantic import QuestionList, GeneratedQuestion
-from generator import RagDataExampleWithMetadata
+from topic_filter import filter_relevant_nodes_by_topic
+from generator._modules import QuestionList, GeneratedQuestion, RagDataExampleWithMetadata
 from generator import CustomRAGDatasetGenerator
 from utils import convert_examples_to_string
 
@@ -18,7 +18,7 @@ QUESTION_GEN_QUERY = PromptTemplate(QUESTION_GEN_PROMPT).format(num_questions_pe
 
 def test_generate_questions(server):
     
-    test_llm, sample_node, _ = server
+    test_llm, _, sample_node, _ = server
     
     sample_document = Document(text=sample_node.text)
     sample_index = SummaryIndex.from_documents([sample_document])
@@ -66,7 +66,7 @@ def test_examples():
 
 def test_question_generator(server):
     
-    test_llm, _, nodes = server
+    test_llm, _, _, nodes = server
     
     question_generator = CustomRAGDatasetGenerator(
         nodes = nodes[:4],
@@ -85,7 +85,7 @@ def test_question_generator(server):
     )
 
 def test_question_generator_function_calling(server):
-    test_llm, _, nodes = server
+    test_llm, _, _, nodes = server
     
     pydantic_question_generator = CustomRAGDatasetGenerator(
         nodes = nodes[:4],
@@ -102,3 +102,15 @@ def test_question_generator_function_calling(server):
         add_generated_data_as_examples = True,
         iterations = 3,
     )
+    
+def test_topic_filter(server):
+    _, structured_llm , _, nodes = server
+    topic: str = "education"
+    
+    relevant_nodes = filter_relevant_nodes_by_topic(
+        topic=topic,
+        nodes=nodes,
+        llm=structured_llm
+    )
+    
+    print(len(relevant_nodes))
