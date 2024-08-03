@@ -1,16 +1,16 @@
 from openai.types.chat.chat_completion_message_tool_call import Function, ChatCompletionMessageToolCall
 from llama_index.core.prompts import ChatMessage, MessageRole, ChatPromptTemplate, PromptTemplate
 from uuid import uuid4
-from custom_pydantic import QuestionList, GeneratedQuestion
+from generator._modules import QuestionList, GeneratedQuestion
 from utils import format_context
-from prompts import (QUESTION_GEN_PROMPT) 
+from generator.llama_index_generator import QUESTION_GEN_PROMPT 
 
 NO_OF_QUESTIONS = 4
 QUESTION_GEN_QUERY = PromptTemplate(QUESTION_GEN_PROMPT).format(num_questions_per_chunk=NO_OF_QUESTIONS)
 
 def test_few_shot_tool_calling(server):
     
-    test_llm, sample_node, _ = server
+    test_llm, _, sample_node, _ = server
     
     SYSTEM_MESSAGE = "Given the context information and not prior knowledge, generate only questions based on the below instructions.\n{query_str}\n-----"
     
