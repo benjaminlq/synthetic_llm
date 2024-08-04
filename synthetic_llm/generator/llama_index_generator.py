@@ -28,10 +28,10 @@ from llama_index.core.settings import (
 )
 from llama_index.core.llama_dataset import LabelledRagDataExample
 
-from ._modules import QuestionList, RagDataExampleWithMetadata
+from synthetic_llm.generator._modules import QuestionList, RagDataExampleWithMetadata
 from copy import deepcopy
 
-from utils import convert_examples_to_string, convert_examples_to_chat_messages
+from synthetic_llm.utils import convert_examples_to_string, convert_examples_to_chat_messages
 
 DEFAULT_QUESTION_GENERATION_PROMPT_SYSTEM_PROMPT = """\
 Given the context information and not prior knowledge.

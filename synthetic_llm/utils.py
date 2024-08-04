@@ -2,7 +2,7 @@ from llama_index.core.prompts import PromptTemplate, ChatMessage, MessageRole
 from llama_index.core.llama_dataset import LabelledRagDataExample
 from typing import List
 from pydantic import BaseModel
-from generator._modules import QuestionList, GeneratedQuestion
+from synthetic_llm.generator._modules import QuestionList, GeneratedQuestion
 from openai.types.chat.chat_completion_message_tool_call import Function, ChatCompletionMessageToolCall
 from uuid import uuid4
 
@@ -90,7 +90,7 @@ def convert_examples_to_chat_messages(
 
 if __name__ == "__main__":
 
-    from generator._modules import RagDataExampleWithMetadata
+    from synthetic_llm.generator._modules import RagDataExampleWithMetadata
     example_list = [
         {
             "reference_contexts": ["Andy has 10 apples", "Bob has 3 apples"],
