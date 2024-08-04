@@ -1,4 +1,4 @@
-# synthetic_llm
+# Synthetic Data Generation
 Synthetic Data Generation using Large Language Model for Fine Tuning and Retrieval Augmented Generation tasks
 
 ## Installation
