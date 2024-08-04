@@ -9,7 +9,6 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 
 from dotenv import load_dotenv
-from config import MAIN_DIR
 
 @pytest.fixture(scope='session', autouse=True)
 def server():
@@ -29,7 +28,7 @@ def server():
     )
 
     documents = SimpleDirectoryReader(
-        input_dir = os.path.join(MAIN_DIR, "tests", "sample_docs")
+        input_dir = os.path.join("tests", "sample_docs")
     ).load_data()
 
     sentence_splitter = SentenceSplitter(chunk_size=512, paragraph_separator="\n\n")

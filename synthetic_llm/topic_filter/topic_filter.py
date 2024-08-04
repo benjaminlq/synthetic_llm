@@ -1,4 +1,4 @@
-from ._modules import NodeRelevancy
+from synthetic_llm.topic_filter._modules import NodeRelevancy
 from typing import Optional, Sequence, List
 
 from llama_index.core.embeddings import BaseEmbedding
