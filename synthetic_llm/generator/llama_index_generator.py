@@ -83,7 +83,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         n_shots: int = 0, 
         few_shot_examples: Optional[RagDataExampleWithMetadata] = None,
     ):
-        """Init params."""
+        
         self._llm = llm or llm_from_settings_or_context(Settings, service_context)
         self._gen_llm = generation_llm or self._llm
         self._qa_llm = qa_llm or self._llm
@@ -146,7 +146,6 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         n_shots: int = 0,
         few_shot_examples: Optional[List[RagDataExampleWithMetadata]] = None,
     ):
-        """Generate dataset from documents."""
         llm = llm or llm_from_settings_or_context(Settings, service_context)
             
         transformations = transformations or transformations_from_settings_or_context(

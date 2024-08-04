@@ -22,10 +22,19 @@ FUNCTION_CALLING_SYSTEM_PROMPT = (
 DEFAULT_LLM = ChatOpenAI(model_name="gpt-4o", temperature=0, max_tokens=128)
 
 def load_relevant_nodes_from_storage(
-    file_directory: str
+    file_path: str
     ) -> List[NodeWithScore]:
-        
-    with open(file_directory, 'r') as f:
+    """
+    Load relevant nodes from a JSON file and return a list of NodeWithScore objects.
+
+    Args:
+        file_directory (str): The path to the JSON file containing the relevant nodes.
+
+    Returns:
+        List[NodeWithScore]: A list of NodeWithScore objects, where each object represents a relevant node with its corresponding score.
+    """
+    
+    with open(file_path, 'r') as f:
         filtered_nodes_dict = json.load(f)
 
     filtered_nodes = []
@@ -46,6 +55,27 @@ def filter_relevant_nodes_by_topic(
     no_bins: int = 10, min_no_samples_per_bin: int = 15,
     save_folder: Optional[str] = None
     ) -> List[NodeWithScore]:
+
+    """
+    Filters relevant nodes based on a given topic using a chat-based relevancy.
+    The function calculate the cosine similarity scores of all the nodes to the query topic and split the nodes into bins based on the similarity scores.
+    An LLM evaluator is used to evaluate the relevancy of sample nodes in each bin and calculate the cutoff bin scores based on the portion of relevant nodes in each bin.
+    For all nodes in relevant bins, LLM evaluator filter out relevant nodes and append them to the filtered nodes list.
+
+    Args:
+        topic (str): The topic to filter nodes by.
+        nodes (Optional[Sequence[BaseNode]]): The sequence of nodes to filter.
+        llm (Optional[BaseChatModel]): The chat-based model used for relevancy evaluation. Defaults to None.
+        embed_model (Optional[BaseEmbedding]): The embedding model used for vector similarity. Defaults to None.
+        relevancy_evaluation_prompt (Optional[str]): The prompt template for the chat-based relevancy evaluation. Defaults to None.
+        relevance_threshold (float, optional): The minimum relevance score to consider a node relevant. Defaults to 0.1.
+        no_bins (int, optional): The number of bins to split the nodes into for sampling. Defaults to 10.
+        min_no_samples_per_bin (int, optional): The minimum number of samples to take from each bin. Defaults to 15.
+        save_folder (Optional[str], optional): The folder to save the filtered nodes as a JSON file. Defaults to None.
+
+    Returns:
+        List[NodeWithScore]: A list of NodeWithScore objects, where each object represents a relevant node with its corresponding score.
+    """
 
     embed_model = embed_model or OpenAIEmbedding()
     llm = llm or DEFAULT_LLM
