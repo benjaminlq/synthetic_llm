@@ -7,10 +7,10 @@ from synthetic_llm.generator.llama_index_generator import (
     DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS,
     ) 
 
-from synthetic_llm.topic_filter import filter_relevant_nodes_by_topic
-from synthetic_llm.generator._modules import QuestionList, GeneratedQuestion, RagDataExampleWithMetadata
+from synthetic_llm.node_filter import filter_relevant_nodes_by_topic
+from synthetic_llm.generator._types import QuestionList, GeneratedQuestion, RagDataExampleWithMetadata
 from synthetic_llm.generator import CustomRAGDatasetGenerator
-from synthetic_llm.utils import convert_examples_to_string
+from synthetic_llm.generator.rag_few_shot import convert_examples_to_string
 
 BLANK_TEXT = ""
 NO_OF_QUESTIONS = 4
