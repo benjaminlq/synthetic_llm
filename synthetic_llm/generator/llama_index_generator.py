@@ -1,7 +1,7 @@
 import warnings
 import random
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from llama_index.core import Document, ServiceContext, SummaryIndex
 from llama_index.core.async_utils import DEFAULT_NUM_WORKERS, run_jobs, asyncio_run
@@ -10,9 +10,9 @@ from llama_index.core.ingestion import run_transformations
 from llama_index.core.llama_dataset import (
     CreatedBy,
     CreatedByType,
-    LabelledRagDataExample,
     LabelledRagDataset,
 )
+from llama_index.core.indices import VectorStoreIndex
 from llama_index.core.llms.llm import LLM
 from llama_index.core.postprocessor.node import KeywordNodePostprocessor
 from llama_index.core.prompts import BasePromptTemplate, PromptTemplate, ChatPromptTemplate, ChatMessage, MessageRole
@@ -25,13 +25,14 @@ from llama_index.core.settings import (
     Settings,
     llm_from_settings_or_context,
     transformations_from_settings_or_context,
+    embed_model_from_settings_or_context
 )
-from llama_index.core.llama_dataset import LabelledRagDataExample
+from llama_index.core.embeddings.utils import resolve_embed_model, EmbedType
 
-from synthetic_llm.generator._modules import QuestionList, RagDataExampleWithMetadata
+from synthetic_llm.generator._types import QuestionList, RagDataExampleWithMetadata
 from copy import deepcopy
 
-from synthetic_llm.utils import convert_examples_to_string, convert_examples_to_chat_messages
+from .rag_few_shot import convert_examples_to_string, convert_examples_to_chat_messages
 
 DEFAULT_QUESTION_GENERATION_PROMPT_SYSTEM_PROMPT = """\
 Given the context information and not prior knowledge.
@@ -64,6 +65,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         self,
         nodes: List[BaseNode],
         llm: Optional[LLM] = None,
+        embed_model: Optional[EmbedType] = None,
         num_questions_per_chunk: int = 3,
         text_question_template: Optional[BasePromptTemplate] = None,
         text_qa_template: Optional[BasePromptTemplate] = None,
@@ -71,25 +73,27 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         metadata_mode: MetadataMode = MetadataMode.NONE,
         show_progress: bool = False,
         workers: int = DEFAULT_NUM_WORKERS,
-        
-        # deprecated
         service_context: Optional[ServiceContext] = None,
-        
-        # Added
         use_function_calling: bool = True,
         generation_llm: Optional[LLM] = None, 
         qa_llm: Optional[LLM] = None, 
-        maximum_source_nodes: int = 1, 
+        maximum_source_nodes: int = 1,
+        neighbor_method: Literal["random", "nearest"] = "nearest",
         n_shots: int = 0, 
         few_shot_examples: Optional[RagDataExampleWithMetadata] = None,
-    ):
-        
+    ):  
         self._llm = llm or llm_from_settings_or_context(Settings, service_context)
+        self._embed_model = (
+            resolve_embed_model(embed_model)
+            if embed_model
+            else embed_model_from_settings_or_context(Settings, service_context)
+        )
         self._gen_llm = generation_llm or self._llm
         self._qa_llm = qa_llm or self._llm
         
         self.num_questions_per_chunk = num_questions_per_chunk
         self._maximum_source_nodes = maximum_source_nodes
+        self._neighbor_nodes = neighbor_method
         self._use_function_calling = use_function_calling
         
         if use_function_calling:
@@ -108,8 +112,10 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
             question_gen_query
             or PromptTemplate(QUESTION_GEN_PROMPT).format(num_questions_per_chunk=num_questions_per_chunk)
         )
+        
         self.nodes = nodes
         self._examples_bank = deepcopy(few_shot_examples) or []
+        
         for example in self._examples_bank:
             example.metadata["occurence"] = 0
             example.metadata["example_type"] = "original"
@@ -134,11 +140,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         exclude_keywords: Optional[List[str]] = None,
         show_progress: bool = False,
         workers: int = DEFAULT_NUM_WORKERS,
-        
-        # deprecated
         service_context: Optional[ServiceContext] = None,
-        
-        # added
         use_function_calling: bool = True,
         generation_llm: Optional[LLM] = None,
         qa_llm: Optional[LLM] = None,
@@ -156,7 +158,6 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
             documents, transformations, show_progress=show_progress
         )
 
-        # use node postprocessor to filter nodes
         required_keywords = required_keywords or []
         exclude_keywords = exclude_keywords or []
         node_postprocessor = KeywordNodePostprocessor(
@@ -207,19 +208,35 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
             return np.exp(-alpha * occurences)
         
         query_tasks = []
-        examples: List[LabelledRagDataExample] = []
+        examples: List[RagDataExampleWithMetadata] = []
         summary_indices: List[SummaryIndex] = []
         
         occurence_list = [0] * len(nodes)
         
-        # Generate idx for iterations
+        # Generate node_idx for iterations
         node_indices_all_runs = []
+        id_to_idx_dict = {node.id_: idx for idx, node in enumerate(nodes)}
+        nodes_retriever = VectorStoreIndex(nodes=nodes, embed_model=self._embed_model).as_retriever(similarity_top_k=self._maximum_source_nodes)
         
         for _ in range(iterations):
             nodes_no = random.choice(range(1, self._maximum_source_nodes + 1))
             scores = [adjustment_factor(occurence) for occurence in occurence_list]
             probs = np.array(scores) / np.sum(scores)
-            node_indices = np.random.choice(range(len(nodes)), size=nodes_no, replace=False, p=probs)
+            
+            if self._neighbor_nodes == "random":        
+                node_indices = np.random.choice(range(len(nodes)), size=nodes_no, replace=False, p=probs)
+                
+            elif self._neighbor_nodes == "nearest":
+                node_indices = np.random.choice(range(len(nodes)), size=1, replace=False, p=probs).tolist()
+                seed_node_content = nodes[node_indices[0]].text
+                nearest_node_indices = [
+                    id_to_idx_dict[node.node.id_]
+                    for node in nodes_retriever.retrieve(seed_node_content)[1:nodes_no]
+                ]
+                node_indices.extend(nearest_node_indices)
+                
+            else:
+                raise ValueError("Invalid neighbor method")
             
             for node_idx in node_indices:
                 occurence_list[node_idx] += 1
@@ -247,13 +264,11 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                 example_list = []
                 examples_no = min(self._n_shots, len(self._examples_bank))
                 
-                # Example probs
                 if examples_no > 0:
                     example_types = [1 if example.metadata["example_type"] == "original" else 0.5 for example in self._examples_bank]
                     example_probs = np.array(example_types) / np.sum(example_types)
                     example_indices = np.random.choice(list(range(len(self._examples_bank))), size=examples_no, replace=False, p=example_probs)
-                    
-                    example_indices = random.sample(list(range(len(self._examples_bank))), examples_no)
+
                     for example_idx in example_indices:
                         example_list.append(self._examples_bank[example_idx])
                         self._examples_bank[example_idx].metadata["occurence"] += 1
