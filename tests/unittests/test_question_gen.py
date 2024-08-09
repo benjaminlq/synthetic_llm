@@ -68,32 +68,74 @@ def test_question_generator(server):
     
     test_llm, _, _, nodes = server
     
+    examples = [
+        RagDataExampleWithMetadata(
+            query="Photosynthesis in plants involves converting light energy into chemical energy, using chlorophyll and other pigments to absorb light. This process is crucial for plant growth and the production of oxygen.",
+            reference_answer=QuestionList(
+                question_list = [
+                    GeneratedQuestion(question = "What is the role of photosynthesis in plant growth?"),
+                    GeneratedQuestion(question = "What substance does photosynthesis produce?"),
+                    GeneratedQuestion(question = "What energy conversion takes place in photosynthesis?")
+                ]).json()
+        ),
+        RagDataExampleWithMetadata(
+            query="The Industrial Revolution, starting in the 18th century, marked a major turning point in history as it led to the development of factories and urbanization.",
+            reference_answer=QuestionList(
+                question_list = [
+                    GeneratedQuestion(question = "How did the Industrial Revolution mark a major turning point in history?"),
+                    GeneratedQuestion(question = "When did the Industrial Revolution start?")
+                ]).json()
+        )
+    ]
+    
     question_generator = CustomRAGDatasetGenerator(
-        nodes = nodes[:4],
-        llm = test_llm,
-        num_questions_per_chunk = 2,
-        maximum_source_nodes = 2,
-        n_shots = 2,
-        use_function_calling=False
+        nodes=nodes[:4],
+        llm=test_llm,
+        num_questions_per_chunk=5,
+        maximum_source_nodes=2,
+        n_shots=2,
+        use_function_calling=False,
+        few_shot_examples=examples
     )
     
     _ = question_generator.generate_dataset_from_nodes(
-        use_examples = True,
-        reset_examples = True,
-        add_generated_data_as_examples = True,
-        iterations = 3
+        use_examples=True,
+        reset_examples=True,
+        add_generated_data_as_examples=True,
+        iterations=3
     )
 
 def test_question_generator_function_calling(server):
     test_llm, _, _, nodes = server
-    
+
+    examples = [
+        RagDataExampleWithMetadata(
+            query="Photosynthesis in plants involves converting light energy into chemical energy, using chlorophyll and other pigments to absorb light. This process is crucial for plant growth and the production of oxygen.",
+            reference_answer=QuestionList(
+                question_list = [
+                    GeneratedQuestion(question = "What is the role of photosynthesis in plant growth?"),
+                    GeneratedQuestion(question = "What substance does photosynthesis produce?"),
+                    GeneratedQuestion(question = "What energy conversion takes place in photosynthesis?")
+                ]).json()
+        ),
+        RagDataExampleWithMetadata(
+            query="The Industrial Revolution, starting in the 18th century, marked a major turning point in history as it led to the development of factories and urbanization.",
+            reference_answer=QuestionList(
+                question_list = [
+                    GeneratedQuestion(question = "How did the Industrial Revolution mark a major turning point in history?"),
+                    GeneratedQuestion(question = "When did the Industrial Revolution start?")
+                ]).json()
+        )
+    ]
+
     pydantic_question_generator = CustomRAGDatasetGenerator(
-        nodes = nodes[:4],
-        llm = test_llm,
-        num_questions_per_chunk = 2,
-        maximum_source_nodes = 2,
-        n_shots = 2,
-        use_function_calling=True
+        nodes=nodes[:4],
+        llm=test_llm,
+        num_questions_per_chunk=5,
+        maximum_source_nodes=2,
+        n_shots=2,
+        use_function_calling=True,
+        few_shot_examples=examples
     )
 
     _ = pydantic_question_generator.generate_dataset_from_nodes(
@@ -107,10 +149,8 @@ def test_topic_filter(server):
     _, structured_llm , _, nodes = server
     topic: str = "education"
     
-    relevant_nodes = filter_relevant_nodes_by_topic(
+    _ = filter_relevant_nodes_by_topic(
         topic=topic,
         nodes=nodes,
         llm=structured_llm
     )
-    
-    print(len(relevant_nodes))

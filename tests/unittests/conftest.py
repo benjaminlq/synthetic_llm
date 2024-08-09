@@ -24,7 +24,7 @@ def server():
     )
 
     structured_llm = ChatOpenAI(
-        model_name="gpt-4o", temperature=0, max_tokens=128
+        model_name="gpt-4o", max_tokens=128, temperature=0
     )
 
     documents = SimpleDirectoryReader(

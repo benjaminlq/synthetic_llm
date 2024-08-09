@@ -34,7 +34,7 @@ nodes = node_parser.get_nodes_from_documents(documents)
 ### Filter Nodes by your topic
 This function uses embeddings and LLM Judge to filter relevant nodes from the nodes library
 ```
-from synthetic_llm.topic_filter import filter_relevant_nodes_by_topic
+from synthetic_llm.node_filter import filter_relevant_nodes_by_topic
 from langchain_openai import ChatOpenAI
 from llama_index.embeddings.openai import OpenAIEmbedding
 
