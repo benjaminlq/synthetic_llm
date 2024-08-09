@@ -28,6 +28,7 @@ from llama_index.core.settings import (
     embed_model_from_settings_or_context
 )
 from llama_index.core.embeddings.utils import resolve_embed_model, EmbedType
+from llama_index.program.openai import OpenAIPydanticProgram
 
 from synthetic_llm.generator._types import QuestionList, RagDataExampleWithMetadata
 from copy import deepcopy
@@ -35,8 +36,8 @@ from copy import deepcopy
 from .rag_few_shot import convert_examples_to_string, convert_examples_to_chat_messages
 
 DEFAULT_QUESTION_GENERATION_PROMPT_SYSTEM_PROMPT = """\
-Given the context information and not prior knowledge.
-generate only questions based on the below instructions.
+Given the context information and not prior knowledge generate only questions based on the below instructions.
+If there are multiple contexts, try your best to generate questions which require information across all the contexts.
 
 {query_str}
 -----------
@@ -215,6 +216,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         
         # Generate node_idx for iterations
         node_indices_all_runs = []
+        node_ids_all_runs = []
         id_to_idx_dict = {node.id_: idx for idx, node in enumerate(nodes)}
         nodes_retriever = VectorStoreIndex(nodes=nodes, embed_model=self._embed_model).as_retriever(similarity_top_k=self._maximum_source_nodes)
         
@@ -248,17 +250,8 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         
         for node_indices in node_indices_all_runs:
             retrieved_nodes = [nodes[node_idx] for node_idx in node_indices]
-            index = SummaryIndex.from_documents(
-                [
-                    Document(
-                        text=node.get_content(metadata_mode=self._metadata_mode),
-                        metadata=node.metadata,
-                        excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
-                        excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
-                        relationships=node.relationships,
-                    ) for node in retrieved_nodes
-                ]
-            )
+            retrieved_nodes_ids_ = [node.id_ for node in retrieved_nodes]
+            node_ids_all_runs.append(retrieved_nodes_ids_)
             
             if use_examples:
                 example_list = []
@@ -277,31 +270,46 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                     few_shot_example_messages = convert_examples_to_chat_messages(example_list, user_template=chat_user_template, context_key="context_str")
                     updated_chat_messages = deepcopy(self.text_question_template.message_templates)
                     updated_chat_messages.extend(few_shot_example_messages)
-                    updated_chat_messages.append(
-                        ChatMessage(content=chat_user_template, role=MessageRole.USER)
-                    )
+                    updated_chat_messages.append(ChatMessage(content=chat_user_template, role=MessageRole.USER)) # Final Query
                     updated_text_question_template = ChatPromptTemplate(updated_chat_messages)
                     
                 else:
                     few_shot_example_str = convert_examples_to_string(example_list, example_wrappers, context_key="context_str")
                     updated_text_question_template = deepcopy(self.text_question_template)
                     updated_text_question_template = updated_text_question_template.partial_format(few_shot_examples=few_shot_example_str)
-            
-            query_engine = index.as_query_engine(
-                llm = self._gen_llm,
-                text_qa_template=updated_text_question_template,
+
+            program = OpenAIPydanticProgram.from_defaults(
                 output_cls=QuestionList,
-                use_async=True
+                prompt=updated_text_question_template,
+                llm=self._gen_llm, 
+                tool_choice="required",
             )
-            task = query_engine.aquery(
-                self.question_gen_query
+
+            context_str = ""
+            for idx, node in enumerate(retrieved_nodes):
+                context_str += "Context No {}:\n{}\n\n".format(idx + 1, node.get_content(metadata_mode=self._metadata_mode))
+
+            task = program.acall(query_str=self.question_gen_query, context_str=context_str)
+
+            index = SummaryIndex.from_documents(
+                [
+                    Document(
+                        text=node.get_content(metadata_mode=self._metadata_mode),
+                        metadata=node.metadata,
+                        excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
+                        excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
+                        relationships=node.relationships,
+                    ) for node in retrieved_nodes
+                ]
             )
+            
             query_tasks.append(task)
             summary_indices.append(index)
             
         responses = await run_jobs(query_tasks, self._show_progress, self._workers)
-        for run_idx, response in enumerate(responses):
-            question_list_str = [gen_question.question for gen_question in response.response.question_list]
+        
+        for run_idx, (response, node_ids) in enumerate(zip(responses, node_ids_all_runs)):
+            question_list_str = [gen_question.question for gen_question in response.question_list]
             cleaned_questions = question_list_str[: self.num_questions_per_chunk]
             num_questions_generated = len(cleaned_questions)
             if num_questions_generated < self.num_questions_per_chunk:
@@ -336,6 +344,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                             reference_contexts=reference_contexts,
                             reference_answer_by=created_by,
                             query_by=created_by,
+                            metadata={"reference_nodes_ids": node_ids}
                         )
                         examples.append(example)
                         
@@ -347,6 +356,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                             reference_contexts=reference_contexts,
                             reference_answer_by=created_by,
                             query_by=created_by,
+                            metadata={"reference_nodes_ids": node_ids}
                         )
                         examples.append(example)
 
