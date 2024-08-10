@@ -145,6 +145,26 @@ def test_question_generator_function_calling(server):
         iterations = 3,
     )
     
+
+    
+def test_relevance_filter(server):
+    
+    test_llm, _, _, nodes = server
+    
+    pydantic_question_generator = CustomRAGDatasetGenerator(
+        nodes=nodes[:4],
+        llm=test_llm,
+        num_questions_per_chunk=5,
+        maximum_source_nodes=2,
+        n_shots=2,
+        use_function_calling=True
+    )
+    
+    _ = pydantic_question_generator.generate_dataset_from_nodes(
+        iterations = 3,
+        llm_relevance_filter = True
+    )
+    
 def test_topic_filter(server):
     _, structured_llm , _, nodes = server
     topic: str = "education"
