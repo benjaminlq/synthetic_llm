@@ -27,6 +27,7 @@ from llama_index.core.settings import (
     transformations_from_settings_or_context,
     embed_model_from_settings_or_context
 )
+from llama_index.core.postprocessor import LLMRerank
 from llama_index.core.embeddings.utils import resolve_embed_model, EmbedType
 from llama_index.program.openai import OpenAIPydanticProgram
 
@@ -82,6 +83,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         neighbor_method: Literal["random", "nearest"] = "nearest",
         n_shots: int = 0, 
         few_shot_examples: Optional[RagDataExampleWithMetadata] = None,
+        llm_relevance_filter: Optional[LLMRerank] = None
     ):  
         self._llm = llm or llm_from_settings_or_context(Settings, service_context)
         self._embed_model = (
@@ -126,6 +128,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         self._metadata_mode = metadata_mode
         self._show_progress = show_progress
         self._workers = workers
+        self._llm_reranker = llm_relevance_filter or LLMRerank(top_n=100, llm=self._qa_llm)
 
     @classmethod
     def from_documents(
@@ -201,6 +204,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         reset_examples: bool = True,
         add_generated_data_as_examples: bool = False,
         iterations: int = 50,
+        llm_relevance_filter: bool = False,
         example_wrappers: str = "Context:\n<START OF CONTEXT>\n{context_str}\n</END OF CONTEXT>\n\nGenerated Questions:\n{answer}\n\n",
         chat_user_template: str = "Context:\n<START OF CONTEXT>\n{context_str}\n</END OF CONTEXT>"
     ):
@@ -210,7 +214,7 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
         
         query_tasks = []
         examples: List[RagDataExampleWithMetadata] = []
-        summary_indices: List[SummaryIndex] = []
+        # summary_indices: List[SummaryIndex] = []
         
         occurence_list = [0] * len(nodes)
         
@@ -278,6 +282,15 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                     updated_text_question_template = deepcopy(self.text_question_template)
                     updated_text_question_template = updated_text_question_template.partial_format(few_shot_examples=few_shot_example_str)
 
+            else:
+                if self._use_function_calling:
+                    updated_chat_messages = deepcopy(self.text_question_template.message_templates)
+                    updated_chat_messages.append(ChatMessage(content=chat_user_template, role=MessageRole.USER))
+                    updated_text_question_template = ChatPromptTemplate(updated_chat_messages)
+                else:
+                    updated_text_question_template = deepcopy(self.text_question_template)
+                    updated_text_question_template = updated_text_question_template.partial_format(few_shot_examples="")
+            
             program = OpenAIPydanticProgram.from_defaults(
                 output_cls=QuestionList,
                 prompt=updated_text_question_template,
@@ -290,25 +303,27 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                 context_str += "Context No {}:\n{}\n\n".format(idx + 1, node.get_content(metadata_mode=self._metadata_mode))
 
             task = program.acall(query_str=self.question_gen_query, context_str=context_str)
-
-            index = SummaryIndex.from_documents(
-                [
-                    Document(
-                        text=node.get_content(metadata_mode=self._metadata_mode),
-                        metadata=node.metadata,
-                        excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
-                        excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
-                        relationships=node.relationships,
-                    ) for node in retrieved_nodes
-                ]
-            )
-            
             query_tasks.append(task)
-            summary_indices.append(index)
+            
+            # index = SummaryIndex.from_documents(
+            #     [
+            #         Document(
+            #             text=node.get_content(metadata_mode=self._metadata_mode),
+            #             metadata=node.metadata,
+            #             excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
+            #             excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
+            #             relationships=node.relationships,
+            #         ) for node in retrieved_nodes
+            #     ]
+            # )
+            # summary_indices.append(index)
             
         responses = await run_jobs(query_tasks, self._show_progress, self._workers)
         
-        for run_idx, (response, node_ids) in enumerate(zip(responses, node_ids_all_runs)):
+        for run_idx, (response, node_ids, node_indices) in enumerate(zip(responses, node_ids_all_runs, node_indices_all_runs)):
+            
+            retrieved_nodes = [nodes[node_idx] for node_idx in node_indices]
+            
             question_list_str = [gen_question.question for gen_question in response.question_list]
             cleaned_questions = question_list_str[: self.num_questions_per_chunk]
             num_questions_generated = len(cleaned_questions)
@@ -324,19 +339,43 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                 model_name = self._gen_llm.metadata.model_name
                 created_by = CreatedBy(type=CreatedByType.AI, model_name=model_name)
                 if labelled:
-                    index = summary_indices[run_idx]
+                    
+                    # index = summary_indices[run_idx]
+                    
                     qr_tasks = []
+                    
                     for query in cleaned_questions:
-                        qa_query_engine = index.as_query_engine(
-                            llm=self._qa_llm,
-                            text_qa_template=self.text_qa_template,
-                        )
-                        qr_task = qa_query_engine.aquery(query)
+                        
+                        # if llm_relevance_filter:
+                        #     filtered_retrieved_nodes = [node_with_score.node for node_with_score in self._llm_reranker.postprocess_nodes(nodes=retrieved_nodes, query_str=query)]
+                        
+                        # else:
+                        #     filtered_retrieved_nodes = retrieved_nodes
+                        
+                        # index = SummaryIndex.from_documents(
+                        #     [
+                        #         Document(
+                        #             text=node.get_content(metadata_mode=self._metadata_mode),
+                        #             metadata=node.metadata,
+                        #             excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
+                        #             excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
+                        #             relationships=node.relationships,
+                        #         ) for node in filtered_retrieved_nodes
+                        #     ]
+                        # )
+                        
+                        # qa_query_engine = index.as_query_engine(
+                        #     llm=self._qa_llm,
+                        #     text_qa_template=self.text_qa_template,
+                        # )
+                        
+                        qr_task = self._afilter_and_query(retrieved_nodes, query, llm_relevance_filter)
                         qr_tasks.append(qr_task)
                     
                     answer_responses: List[RESPONSE_TYPE] = await run_jobs(
                         qr_tasks, self._show_progress, self._workers
                     )
+                    
                     for question, answer_response in zip(cleaned_questions, answer_responses):
                         example = RagDataExampleWithMetadata(
                             query=question,
@@ -367,7 +406,38 @@ class CustomRAGDatasetGenerator(RagDatasetGenerator):
                     self._examples_bank.append(added_example)
         
         return LabelledRagDataset(examples=examples)
-    
+
+    async def _afilter_relevant_nodes(self, retrieved_nodes: List[BaseNode], query) -> List[BaseNode]:
+        retrieved_nodes = [NodeWithScore(node=node, score=0.0) for node in retrieved_nodes]
+        nodes_with_score = self._llm_reranker.postprocess_nodes(nodes=retrieved_nodes, query_str=query)
+        filtered_nodes = [node_with_score.node for node_with_score in nodes_with_score]
+        return filtered_nodes
+
+    async def _afilter_and_query(self, retrieved_nodes: List[BaseNode], query, llm_relevance_filter: bool=False):
+        if llm_relevance_filter:
+            filtered_retrieved_nodes = await self._afilter_relevant_nodes(retrieved_nodes=retrieved_nodes, query=query)
+        else:
+            filtered_retrieved_nodes = retrieved_nodes
+        
+        index = SummaryIndex.from_documents(
+            [
+                Document(
+                    text=node.get_content(metadata_mode=self._metadata_mode),
+                    metadata=node.metadata,
+                    excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
+                    excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
+                    relationships=node.relationships,
+                ) for node in filtered_retrieved_nodes
+            ]
+        )
+        
+        qa_query_engine = index.as_query_engine(
+            llm=self._qa_llm,
+            text_qa_template=self.text_qa_template,
+        )
+        response = await qa_query_engine.aquery(query)
+        return response
+
     async def agenerate_questions_from_nodes(self, **kwargs) -> LabelledRagDataset:
         """Generates questions but not the reference answers."""
         return await self._agenerate_dataset(self.nodes, labelled=False, **kwargs)
