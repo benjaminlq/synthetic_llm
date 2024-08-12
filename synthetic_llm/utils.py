@@ -2,7 +2,7 @@ from llama_index.core.prompts import PromptTemplate, ChatMessage, MessageRole
 from llama_index.core.llama_dataset import LabelledRagDataExample
 from typing import List, Dict, Union
 from langchain_core.pydantic_v1 import BaseModel
-from synthetic_llm.generator._types import QuestionList, GeneratedQuestion
+from synthetic_llm.llama_index._types import QuestionList, GeneratedQuestion
 from openai.types.chat.chat_completion_message_tool_call import Function, ChatCompletionMessageToolCall
 from uuid import uuid4
 

@@ -2,15 +2,15 @@ from llama_index.core.prompts import PromptTemplate
 from llama_index.core.indices import SummaryIndex
 from llama_index.core.schema import Document
 
-from synthetic_llm.generator.llama_index_generator import (
+from synthetic_llm.llama_index.llama_index_generator import (
     QUESTION_GEN_PROMPT,
     DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS,
     ) 
 
 from synthetic_llm.node_filter import filter_relevant_nodes_by_topic
-from synthetic_llm.generator._types import QuestionList, GeneratedQuestion, RagDataExampleWithMetadata
-from synthetic_llm.generator import CustomRAGDatasetGenerator
-from synthetic_llm.generator.rag_few_shot import convert_examples_to_string
+from synthetic_llm.llama_index._types import QuestionList, GeneratedQuestion, RagDataExampleWithMetadata
+from synthetic_llm.llama_index import CustomRAGDatasetGenerator
+from synthetic_llm.llama_index.rag_few_shot import convert_examples_to_string
 
 BLANK_TEXT = ""
 NO_OF_QUESTIONS = 4
@@ -143,6 +143,26 @@ def test_question_generator_function_calling(server):
         reset_examples = True,
         add_generated_data_as_examples = True,
         iterations = 3,
+    )
+    
+
+    
+def test_relevance_filter(server):
+    
+    test_llm, _, _, nodes = server
+    
+    pydantic_question_generator = CustomRAGDatasetGenerator(
+        nodes=nodes[:4],
+        llm=test_llm,
+        num_questions_per_chunk=5,
+        maximum_source_nodes=2,
+        n_shots=2,
+        use_function_calling=True
+    )
+    
+    _ = pydantic_question_generator.generate_dataset_from_nodes(
+        iterations = 3,
+        llm_relevance_filter = True
     )
     
 def test_topic_filter(server):

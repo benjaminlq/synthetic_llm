@@ -31,7 +31,7 @@ from llama_index.core.postprocessor import LLMRerank
 from llama_index.core.embeddings.utils import resolve_embed_model, EmbedType
 from llama_index.program.openai import OpenAIPydanticProgram
 
-from synthetic_llm.generator._types import QuestionList, RagDataExampleWithMetadata
+from synthetic_llm.llama_index._types import QuestionList, RagDataExampleWithMetadata
 from copy import deepcopy
 
 from .rag_few_shot import convert_examples_to_string, convert_examples_to_chat_messages

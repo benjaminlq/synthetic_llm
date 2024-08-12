@@ -2,9 +2,9 @@ from openai.types.chat.chat_completion_message_tool_call import Function, ChatCo
 from llama_index.core.prompts import ChatMessage, MessageRole, ChatPromptTemplate, PromptTemplate
 from uuid import uuid4
 
-from synthetic_llm.generator._types import QuestionList, GeneratedQuestion
-from synthetic_llm.generator.llama_index_generator import QUESTION_GEN_PROMPT 
-from synthetic_llm.generator.rag_few_shot import format_context
+from synthetic_llm.llama_index._types import QuestionList, GeneratedQuestion
+from synthetic_llm.llama_index.llama_index_generator import QUESTION_GEN_PROMPT 
+from synthetic_llm.llama_index.rag_few_shot import format_context
 
 NO_OF_QUESTIONS = 4
 QUESTION_GEN_QUERY = PromptTemplate(QUESTION_GEN_PROMPT).format(num_questions_per_chunk=NO_OF_QUESTIONS)
