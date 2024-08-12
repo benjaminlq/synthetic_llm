@@ -2,15 +2,15 @@ from llama_index.core.prompts import PromptTemplate
 from llama_index.core.indices import SummaryIndex
 from llama_index.core.schema import Document
 
-from synthetic_llm.generator.llama_index_generator import (
+from synthetic_llm.llama_index.llama_index_generator import (
     QUESTION_GEN_PROMPT,
     DEFAULT_QUESTION_GENERATION_PROMPT_FEW_SHOTS,
     ) 
 
 from synthetic_llm.node_filter import filter_relevant_nodes_by_topic
-from synthetic_llm.generator._types import QuestionList, GeneratedQuestion, RagDataExampleWithMetadata
-from synthetic_llm.generator import CustomRAGDatasetGenerator
-from synthetic_llm.generator.rag_few_shot import convert_examples_to_string
+from synthetic_llm.llama_index._types import QuestionList, GeneratedQuestion, RagDataExampleWithMetadata
+from synthetic_llm.llama_index import CustomRAGDatasetGenerator
+from synthetic_llm.llama_index.rag_few_shot import convert_examples_to_string
 
 BLANK_TEXT = ""
 NO_OF_QUESTIONS = 4
